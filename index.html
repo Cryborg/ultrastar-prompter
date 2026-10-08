@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Karaoké UltraStar</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Unbounded:wght@600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+/* Layout : une bibliothèque en liste dense, puis une scène plein cadre où la ligne chantée est le seul élément fort. Thème unique, sombre : c'est une salle de karaoké. */
+:root{
+  color-scheme:dark;
+  --bg:#150d1c; --panel:#20142b; --line:#3a2749;
+  --fg:#f6eefb; --dim:#a892b8; --unsung:#6f5a80;
+  --p1:#ff4fa3; --p2:#3fd6e0; --gold:#ffc94a;
+  --display:"Unbounded","Arial Black",sans-serif;
+  --body:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",Consolas,monospace;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.4}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.5em .9em}
+button:hover{border-color:var(--p1)}
+:focus-visible{outline:2px solid var(--p2);outline-offset:2px}
+
+/* Bibliothèque */
+#lib{max-width:960px;margin:0 auto;padding-inline:16px;padding-block:28px 48px;display:flex;flex-direction:column;gap:20px}
+.brand{font-family:var(--display);font-weight:800;font-size:clamp(1.4rem,4vw,2.1rem);letter-spacing:-.02em;margin:0}
+.brand span{color:var(--p1)}
+.lead{color:var(--dim);margin:0;max-width:60ch}
+#drop{border:2px dashed var(--line);border-radius:14px;padding:20px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+#drop.over{border-color:var(--p1);background:var(--panel)}
+#drop p{margin:0;color:var(--dim);flex:1 1 240px;min-width:0}
+#drop code{font-family:var(--mono);font-size:.82em;color:var(--fg);overflow-wrap:anywhere}
+.primary{background:var(--p1);color:#1b0712;border:0;font-weight:800;padding:.7em 1.2em}
+#status{font-family:var(--mono);font-size:.85rem;color:var(--dim);min-height:1.2em}
+#search{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.7em .9em}
+#list{display:flex;flex-direction:column}
+.song{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:12px;align-items:center;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:8px 4px}
+.song:hover{background:var(--panel)}
+.song img,.song .ph{width:48px;height:48px;border-radius:6px;object-fit:cover;background:var(--panel)}
+.song b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.song small{color:var(--dim);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag{font-family:var(--mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--p2);border:1px solid currentColor;border-radius:99px;padding:.1em .6em;margin-left:4px}
+.tag.warn{color:var(--gold)}
+
+/* Scène */
+#stage{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+#bgimg,#vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.35}
+#stage::after{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(21,13,28,.75),rgba(21,13,28,.2) 35%,rgba(21,13,28,.92) 80%);pointer-events:none}
+#top,#tracks,#bar{position:relative;z-index:1}
+#top{display:flex;gap:12px;align-items:center;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px}
+#top h2{margin:0;font-size:1rem;font-weight:600;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#top h2 small{color:var(--dim);font-weight:400}
+#tracks{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;gap:3vh;padding:0 16px 3vh}
+.track{--c:var(--p1);display:flex;flex-direction:column;gap:1.2vh;align-items:center;text-align:center}
+.track.t2{--c:var(--p2)}
+.lane{position:relative;width:min(100%,1000px);height:clamp(60px,16vh,150px)}
+.duet .lane{height:clamp(40px,9vh,90px)}
+.note{position:absolute;height:12%;min-height:8px;border-radius:99px;background:var(--unsung);overflow:hidden}
+.note i{display:block;height:100%;width:var(--p,0%);background:var(--c)}
+.note.gold{box-shadow:0 0 0 2px var(--gold)}
+.note.gold i{background:var(--gold)}
+.note.free{opacity:.4}
+.head{position:absolute;top:0;bottom:0;width:2px;background:var(--fg);opacity:.7}
+.wait{height:6px;width:min(60%,420px);border-radius:99px;background:var(--line);overflow:hidden}
+.wait i{display:block;height:100%;background:var(--c);width:var(--w,0%)}
+.cur{font-weight:800;font-size:clamp(1.6rem,5.4vw,4.2rem);line-height:1.15;white-space:pre-wrap;min-height:1.15em;text-wrap:balance;letter-spacing:-.01em}
+.duet .cur{font-size:clamp(1.3rem,3.8vw,3rem)}
+.cur span{background-image:linear-gradient(90deg,var(--c) var(--p,0%),var(--fg) var(--p,0%));-webkit-background-clip:text;background-clip:text;color:transparent}
+.cur span.gold{background-image:linear-gradient(90deg,var(--gold) var(--p,0%),var(--fg) var(--p,0%))}
+.cur span.free{font-style:italic;font-weight:400}
+.nxt{color:var(--dim);font-size:clamp(1rem,2.6vw,1.9rem);white-space:pre-wrap;min-height:1.4em}
+.old{color:var(--c);font-size:clamp(1rem,2.6vw,1.9rem);white-space:pre-wrap;min-height:1.4em;opacity:.6;transition:opacity .7s ease}
+.old.gone{opacity:0}
+.old.in{animation:riseOld .5s ease}
+.cur.in{animation:riseCur .5s ease}
+.nxt.in{animation:riseNxt .5s ease}
+@keyframes riseOld{from{transform:translateY(120%) scale(1.8);opacity:1}}
+@keyframes riseCur{from{transform:translateY(75%) scale(.5);opacity:.5}}
+@keyframes riseNxt{from{transform:translateY(60%);opacity:0}}
+@media (prefers-reduced-motion:reduce){.old.in,.cur.in,.nxt.in{animation:none}}
+#bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));background:rgba(21,13,28,.8)}
+#seek{flex:1 1 200px;min-width:0;accent-color:var(--p1)}
+#vol{width:90px;accent-color:var(--p1)}
+.mono{font-family:var(--mono);font-size:.82rem;font-variant-numeric:tabular-nums;color:var(--dim)}
+#play{min-width:5.5em;font-weight:800}
+#msg{position:relative;z-index:1;text-align:center;color:var(--gold);font-size:.9rem;padding:0 16px}
+#stage.idle #top,#stage.idle #bar{opacity:0;transition:opacity .4s}
+#stage.idle{cursor:none}
+</style>
+</head>
+<body>
+
+<main id="lib">
+  <h1 class="brand">Karaoké <span>UltraStar</span></h1>
+  <p class="lead">Lit tes chansons au format UltraStar et affiche les paroles en rythme. Rien n'est envoyé nulle part : les fichiers restent sur ton PC.</p>
+  <div id="drop">
+    <button class="primary" id="pick" type="button">Choisir le dossier songs</button>
+    <input type="file" id="dir" webkitdirectory multiple hidden>
+    <p>Sélectionne <code>C:\Users\Admin\Documents\Ultrastar\songs</code> (ou glisse-le ici). Les sous-dossiers A, B, C… sont parcourus.</p>
+  </div>
+  <div id="status" role="status"></div>
+  <input id="search" type="search" placeholder="Chercher un artiste ou un titre" aria-label="Chercher">
+  <div id="list"></div>
+</main>
+
+<section id="stage" hidden>
+  <img id="bgimg" alt="" hidden>
+  <video id="vid" muted playsinline hidden></video>
+  <div id="top">
+    <button id="back" type="button" title="Retour (Échap)">← Liste</button>
+    <h2 id="now"></h2>
+    <button id="fs" type="button" title="Plein écran (F)">Plein écran</button>
+  </div>
+  <div id="msg"></div>
+  <div id="tracks"></div>
+  <div id="bar">
+    <button id="prev" type="button" title="Chanson précédente">⏮</button>
+    <button id="play" type="button" class="primary">Lecture</button>
+    <button id="next" type="button" title="Chanson suivante (N)">⏭</button>
+    <span class="mono" id="time">0:00 / 0:00</span>
+    <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Position">
+    <button id="offm" type="button" title="Paroles plus tôt">−</button>
+    <span class="mono" id="off" title="Décalage des paroles">0 ms</span>
+    <button id="offp" type="button" title="Paroles plus tard">+</button>
+    <input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+  </div>
+  <audio id="aud" preload="auto"></audio>
+</section>
+
+<script>
+const $=id=>document.getElementById(id);
+const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+const DEMO=`#TITLE:Tour de chauffe
+#ARTIST:Démo sans son
+#BPM:150
+#GAP:3000
+: 0 4 60 Un
+: 5 4 62  es
+: 9 3 64 sai
+: 13 4 65  de
+: 18 6 67  mi
+: 24 8 69 cro
+- 36
+: 40 4 67 Les
+: 45 4 65  mots
+: 50 4 64  s'al
+: 54 4 62 lu
+: 58 8 60 ment
+- 70
+: 74 4 60 Syl
+: 78 4 64 labe
+: 83 4 67  a
+: 87 4 72 près
+* 92 10 71  syl
+* 102 10 69 labe
+- 116
+: 120 4 65 Choi
+: 124 4 64 sis
+: 129 4 62  ton
+: 134 5 64  dos
+: 139 10 60 sier
+- 152
+: 156 4 60 Et
+: 161 4 62  chan
+: 165 4 64 te
+: 170 4 65  à
+: 175 4 67  tue-
+* 180 16 72 tête
+E`;
+
+/* ---------- Format UltraStar ---------- */
+function decode(buf){
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(buf)}
+  catch(e){return new TextDecoder('windows-1252').decode(buf)}
+}
+function num(s){const v=parseFloat(String(s||'').replace(',','.'));return isFinite(v)?v:0}
+function headers(text){
+  const h={};
+  for(const l of text.replace(/^\uFEFF/,'').split(/\r?\n/)){
+    if(l[0]!=='#'){ if(/^[:*FRG-]/.test(l)) break; continue }
+    const i=l.indexOf(':'); if(i>1) h[l.slice(1,i).trim().toUpperCase()]=l.slice(i+1).trim();
+  }
+  return h;
+}
+function parseSong(text){
+  const h=headers(text), bpm=num(h.BPM)||120, gap=num(h.GAP)/1000, rel=/^yes$/i.test(h.RELATIVE||'');
+  const sec=b=>gap+b*15/bpm;
+  const raw=[[],[]]; let tr=0, base=[0,0];
+  for(const l of text.replace(/^\uFEFF/,'').split(/\r?\n/)){
+    const c=l[0];
+    if(c==='E') break;
+    if(c==='P'){ tr=parseInt(l.slice(1))===2?1:0; continue }
+    if(c==='-'){
+      const n=l.slice(1).trim().split(/\s+/).map(Number);
+      raw[tr].push(null);
+      if(rel) base[tr]+= (n.length>1&&isFinite(n[1]))?n[1]:(n[0]||0);
+      continue;
+    }
+    const m=/^([:*FRG])\s*(-?\d+)\s+(-?\d+)\s+(-?\d+)\s?(.*)$/.exec(l);
+    if(!m) continue;
+    const b=+m[2]+(rel?base[tr]:0);
+    raw[tr].push({t0:sec(b),t1:sec(b+Math.max(1,+m[3])),pitch:+m[4],text:m[5],
+      type:(m[1]==='*'||m[1]==='G')?'gold':m[1]==='F'?'free':''});
+  }
+  const tracks=raw.map(r=>{
+    const lines=[]; let cur=[];
+    const flush=()=>{ if(cur.length){ cur[0].text=cur[0].text.replace(/^\s+/,''); lines.push({notes:cur,t0:cur[0].t0,t1:cur[cur.length-1].t1}); cur=[] } };
+    for(const n of r){ n?cur.push(n):flush() } flush();
+    return lines;
+  }).filter(t=>t.length);
+  let end=0; tracks.forEach(t=>end=Math.max(end,t[t.length-1].t1));
+  return {h,tracks,end,start:num(h.START),stop:num(h.END)/1000,vgap:num(h.VIDEOGAP)};
+}
+
+/* ---------- Bibliothèque ---------- */
+let songs=[{demo:true,artist:'Démo sans son',title:'Tour de chauffe',h:{},dir:null}], shown=[], urls=[];
+const AUDIO=/\.(mp3|ogg|oga|m4a|opus|wav|flac|aac|mp4|webm)$/i, IMG=/\.(jpe?g|png|webp|gif|bmp)$/i, VID=/\.(mp4|webm|m4v|mov)$/i;
+
+async function entriesToFiles(items){
+  const out=[];
+  async function walk(e){
+    if(e.isFile) await new Promise(r=>e.file(f=>{f._path=e.fullPath.replace(/^\//,'');out.push(f);r()},r));
+    else if(e.isDirectory){
+      const rd=e.createReader();
+      for(;;){ const b=await new Promise(r=>rd.readEntries(r,()=>r([]))); if(!b.length) break; for(const x of b) await walk(x) }
+    }
+  }
+  for(const e of items) if(e) await walk(e);
+  return out;
+}
+async function load(files){
+  const dirs=new Map(), txts=[];
+  for(const f of files){
+    const p=(f._path||f.webkitRelativePath||f.name).replace(/\\/g,'/'), i=p.lastIndexOf('/');
+    const d=i<0?'':p.slice(0,i);
+    if(!dirs.has(d)) dirs.set(d,new Map());
+    dirs.get(d).set(f.name.toLowerCase(),f);
+    if(/\.txt$/i.test(f.name)) txts.push([d,f]);
+  }
+  if(!txts.length){ $('status').textContent='Aucun fichier .txt trouvé dans ce dossier. Vérifie que tu as bien choisi le dossier songs.'; return }
+  const found=[]; let done=0;
+  for(let i=0;i<txts.length;i+=24){
+    await Promise.all(txts.slice(i,i+24).map(async([d,f])=>{
+      try{
+        const h=headers(decode(await f.arrayBuffer()));
+        if(h.BPM){
+          const folder=d.split('/').pop()||f.name.replace(/\.txt$/i,''), k=folder.indexOf(' - ');
+          found.push({file:f,dir:dirs.get(d),h,
+            artist:h.ARTIST||(k>0?folder.slice(0,k):'Inconnu'),
+            title:h.TITLE||(k>0?folder.slice(k+3):folder)});
+        }
+      }catch(e){}
+      done++;
+    }));
+    $('status').textContent=`Lecture des chansons… ${done} / ${txts.length}`;
+  }
+  if(!found.length){ $('status').textContent='Des .txt ont été trouvés, mais aucun au format UltraStar (pas de ligne #BPM).'; return }
+  const cmp=new Intl.Collator('fr',{sensitivity:'base',numeric:true}).compare;
+  found.sort((a,b)=>cmp(a.artist,b.artist)||cmp(a.title,b.title));
+  songs=found;
+  $('status').textContent=`${found.length} chanson${found.length>1?'s':''} chargée${found.length>1?'s':''}.`;
+  render();
+}
+function pickFile(s,name,re,hint){
+  if(!s.dir) return null;
+  if(name){ const f=s.dir.get(name.toLowerCase()); if(f) return f }
+  let fb=null;
+  for(const [n,f] of s.dir){ if(re.test(n)){ if(hint&&n.includes(hint)) return f; fb=fb||f } }
+  return hint&&name===undefined?null:fb;
+}
+const cover=s=>pickFile(s,s.h.COVER,IMG,'[co]');
+function render(){
+  urls.forEach(u=>URL.revokeObjectURL(u)); urls=[];
+  const q=$('search').value.trim().toLowerCase();
+  shown=q?songs.filter(s=>(s.artist+' '+s.title).toLowerCase().includes(q)):songs;
+  const list=$('list'); list.textContent='';
+  shown.slice(0,400).forEach((s,i)=>{
+    const b=document.createElement('button'); b.type='button'; b.className='song';
+    const c=cover(s); let im;
+    if(c){ im=document.createElement('img'); im.loading='lazy'; im.alt=''; const u=URL.createObjectURL(c); urls.push(u); im.src=u }
+    else{ im=document.createElement('div'); im.className='ph' }
+    const mid=document.createElement('div'); mid.style.minWidth='0';
+    const t=document.createElement('b'); t.textContent=s.title;
+    const a=document.createElement('small'); a.textContent=s.artist;
+    mid.append(t,a);
+    const tags=document.createElement('div');
+    const tag=(x,w)=>{const e=document.createElement('span');e.className='tag'+(w?' warn':'');e.textContent=x;tags.append(e)};
+    if(s.demo) tag('exemple',1);
+    if(s.h.P1||s.h.DUETSINGERP1) tag('duo');
+    if(s.h.VIDEO) tag('vidéo');
+    b.append(im,mid,tags);
+    b.onclick=()=>open(i);
+    list.append(b);
+  });
+  if(shown.length>400){ const p=document.createElement('p'); p.className='lead'; p.textContent=`${shown.length-400} autres chansons : affine la recherche pour les voir.`; list.append(p) }
+  if(!shown.length){ const p=document.createElement('p'); p.className='lead'; p.textContent='Aucune chanson ne correspond.'; list.append(p) }
+}
+
+/* ---------- Lecteur ---------- */
+const aud=$('aud'), vid=$('vid');
+let song=null, idx=-1, useAudio=false, playing=false, vbase=0, vstart=0, offset=store.get('kOffset',0), raf=0, views=[], media=[], seeking=false, hasVid=false;
+const now=()=>useAudio?aud.currentTime:(playing?vbase+(performance.now()-vstart)/1000:vbase);
+const dur=()=>song.stop||((useAudio&&isFinite(aud.duration))?aud.duration:song.end+3);
+const fmt=t=>{t=Math.max(0,t|0);return (t/60|0)+':'+String(t%60).padStart(2,'0')};
+const clamp=x=>x<0?0:x>1?1:x;
+
+async function open(i){
+  const s=shown[i]; if(!s) return;
+  stop(); idx=i;
+  song=parseSong(s.demo?DEMO:decode(await s.file.arrayBuffer()));
+  $('now').innerHTML=''; $('now').append(s.title+' '); const sm=document.createElement('small'); sm.textContent='· '+s.artist; $('now').append(sm);
+  media.forEach(u=>URL.revokeObjectURL(u)); media=[];
+  const url=f=>{const u=URL.createObjectURL(f);media.push(u);return u};
+  const a=s.demo?null:pickFile(s,song.h.AUDIO||song.h.MP3,AUDIO);
+  useAudio=!!a; $('msg').textContent='';
+  if(a){ aud.src=url(a) } else { aud.removeAttribute('src'); aud.load();
+    $('msg').textContent=s.demo?'Exemple sans musique : seules les paroles défilent.':'Fichier audio introuvable dans le dossier : les paroles défilent sans musique.' }
+  const v=s.demo?null:(song.h.VIDEO&&s.dir.get(song.h.VIDEO.toLowerCase()));
+  hasVid=!!(v&&VID.test(v.name)); vid.hidden=!hasVid;
+  if(hasVid) vid.src=url(v); else { vid.removeAttribute('src'); vid.load() }
+  const bg=s.demo?null:(pickFile(s,song.h.BACKGROUND,IMG,'[bg]')||cover(s));
+  $('bgimg').hidden=!bg||hasVid; if(bg) $('bgimg').src=url(bg);
+  // pistes
+  const box=$('tracks'); box.textContent=''; box.className=song.tracks.length>1?'duet':'';
+  views=song.tracks.map((lines,k)=>{
+    const el=document.createElement('div'); el.className='track'+(k?' t2':'');
+    el.innerHTML='<div class="lane"></div><div class="wait" hidden><i></i></div><div class="old"></div><div class="cur"></div><div class="nxt"></div>';
+    box.append(el);
+    return {lines,li:-2,lane:el.children[0],wait:el.children[1],old:el.children[2],cur:el.children[3],nxt:el.children[4],spans:[],bars:[],head:null};
+  });
+  if(!song.tracks.length) $('msg').textContent='Ce fichier ne contient aucune note lisible.';
+  vbase=song.start; if(useAudio&&song.start) aud.currentTime=song.start;
+  $('lib').hidden=true; $('stage').hidden=false;
+  setOffset(0); play();
+}
+function buildLine(v,li){
+  const adv=v.li>=0&&li===v.li+1;
+  v.old.textContent=adv?v.lines[v.li].notes.map(n=>n.text).join(''):''; v.old.classList.remove('gone');
+  for(const e of [v.old,v.cur,v.nxt]){ e.classList.remove('in'); if(adv){ void e.offsetWidth; e.classList.add('in') } }
+  v.li=li; v.cur.textContent=''; v.lane.textContent=''; v.spans=[]; v.bars=[]; v.head=null;
+  const L=v.lines[li], N=v.lines[li+1];
+  v.nxt.textContent=N?N.notes.map(n=>n.text).join(''):'';
+  if(!L) return;
+  let lo=Infinity,hi=-Infinity; L.notes.forEach(n=>{lo=Math.min(lo,n.pitch);hi=Math.max(hi,n.pitch)});
+  const pad=Math.max(0,(10-(hi-lo))/2); lo-=pad; hi+=pad; const d=L.t1-L.t0||1;
+  for(const n of L.notes){
+    const s=document.createElement('span'); s.textContent=n.text; if(n.type) s.className=n.type; v.cur.append(s); v.spans.push(s);
+    const b=document.createElement('div'); b.className='note '+n.type;
+    b.style.left=(n.t0-L.t0)/d*100+'%'; b.style.width=Math.max(1,(n.t1-n.t0)/d*100)+'%'; b.style.top=(hi-n.pitch)/(hi-lo)*88+'%';
+    b.append(document.createElement('i')); v.lane.append(b); v.bars.push(b);
+  }
+  v.head=document.createElement('div'); v.head.className='head'; v.lane.append(v.head);
+}
+function frame(){
+  raf=requestAnimationFrame(frame);
+  if(!song) return;
+  const real=now(), t=real-offset/1000, D=dur();
+  for(const v of views){
+    let li=v.lines.findIndex(l=>l.t1>t); if(li<0) li=v.lines.length;
+    if(li!==v.li) buildLine(v,li);
+    const L=v.lines[li];
+    if(!L){ v.wait.hidden=true; v.old.classList.add('gone'); continue }
+    L.notes.forEach((n,j)=>{
+      const p=(clamp((t-n.t0)/(n.t1-n.t0))*100).toFixed(1)+'%';
+      if(v.spans[j]._p!==p){ v.spans[j]._p=p; v.spans[j].style.setProperty('--p',p); v.bars[j].style.setProperty('--p',p) }
+    });
+    const w=L.t0-t;
+    v.head.style.left=clamp((t-L.t0)/(L.t1-L.t0))*100+'%'; v.head.hidden=w>0;
+    const P=v.lines[li-1], show=w>0&&(L.t0-(P?P.t1:0))>=2;
+    v.old.classList.toggle('gone',t>=L.t0||(!!P&&t>P.t1+2.5));
+    v.wait.hidden=!show; if(show) v.wait.firstChild.style.setProperty('--w',Math.min(w,5)/5*100+'%');
+  }
+  if(hasVid&&vid.readyState>0){
+    const want=real+song.vgap;
+    if(want>=0&&want<(vid.duration||1e9)){ if(Math.abs(vid.currentTime-want)>.35) vid.currentTime=want; if(playing&&vid.paused) vid.play().catch(()=>{}); if(!playing&&!vid.paused) vid.pause() }
+    else if(!vid.paused) vid.pause();
+  }
+  $('time').textContent=fmt(real)+' / '+fmt(D);
+  if(!seeking) $('seek').value=clamp(real/D)*1000;
+  if(playing&&real>=D) pause();
+}
+function play(){
+  if(now()>=dur()-.05) seekTo(song.start||0);
+  playing=true; vstart=performance.now();
+  if(useAudio) aud.play().catch(()=>{ playing=false; ui() });
+  ui();
+}
+function pause(){ if(!useAudio) vbase=now(); playing=false; if(useAudio) aud.pause(); ui() }
+function stop(){ if(song){ pause(); vid.pause() } }
+function ui(){ $('play').textContent=playing?'Pause':'Lecture' }
+function seekTo(t){ t=Math.max(0,Math.min(t,dur())); if(useAudio) aud.currentTime=t; else{ vbase=t; vstart=performance.now() } }
+function setOffset(d){ offset=Math.max(-3000,Math.min(3000,offset+d)); store.set('kOffset',offset); $('off').textContent=(offset>0?'+':'')+offset+' ms' }
+function close(){ stop(); song=null; if(document.fullscreenElement) document.exitFullscreen().catch(()=>{}); $('stage').hidden=true; $('lib').hidden=false }
+function step(d){ if(shown.length) open((idx+d+shown.length)%shown.length) }
+function fullscreen(){ const s=$('stage'); if(document.fullscreenElement) document.exitFullscreen().catch(()=>{}); else if(s.requestFullscreen) s.requestFullscreen().catch(()=>{}) }
+
+aud.addEventListener('ended',()=>{playing=false;ui()});
+aud.addEventListener('error',()=>{ if(useAudio&&song){ $('msg').textContent='Ce format audio n\'est pas lisible par le navigateur : les paroles défilent sans musique.'; const t=aud.currentTime||0; useAudio=false; vbase=t; vstart=performance.now() } });
+$('play').onclick=()=>playing?pause():play();
+$('back').onclick=close; $('fs').onclick=fullscreen;
+$('prev').onclick=()=>step(-1); $('next').onclick=()=>step(1);
+$('offm').onclick=()=>setOffset(-50); $('offp').onclick=()=>setOffset(50);
+$('seek').oninput=e=>{seeking=true;seekTo(e.target.value/1000*dur())};
+$('seek').onchange=()=>seeking=false;
+$('vol').value=aud.volume=store.get('kVol',1);
+$('vol').oninput=e=>{aud.volume=+e.target.value;store.set('kVol',aud.volume)};
+document.addEventListener('keydown',e=>{
+  if(!song||e.target.tagName==='INPUT'&&e.target.type!=='range') return;
+  const k=e.key;
+  if(k===' '){e.preventDefault();playing?pause():play()}
+  else if(k==='ArrowLeft'&&e.target.type!=='range') seekTo(now()-5);
+  else if(k==='ArrowRight'&&e.target.type!=='range') seekTo(now()+5);
+  else if(k==='Escape'&&!document.fullscreenElement) close();
+  else if(k==='f'||k==='F') fullscreen();
+  else if(k==='n'||k==='N') step(1);
+});
+let idleT; const wake=()=>{ $('stage').classList.remove('idle'); clearTimeout(idleT); idleT=setTimeout(()=>{ if(playing) $('stage').classList.add('idle') },3000) };
+$('stage').addEventListener('pointermove',wake); $('stage').addEventListener('pointerdown',wake); document.addEventListener('keydown',wake);
+
+$('pick').onclick=()=>$('dir').click();
+$('dir').onchange=e=>{ if(e.target.files.length){ $('status').textContent='Analyse du dossier…'; load([...e.target.files]) } };
+const drop=$('drop');
+['dragenter','dragover'].forEach(n=>drop.addEventListener(n,e=>{e.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(n=>drop.addEventListener(n,e=>{e.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop',async e=>{
+  const items=[...(e.dataTransfer.items||[])].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry());
+  $('status').textContent='Analyse du dossier…';
+  const files=items.some(Boolean)?await entriesToFiles(items):[...e.dataTransfer.files];
+  load(files);
+});
+$('search').oninput=render;
+render(); frame();
+</script>
+</body>
+</html>
