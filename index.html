@@ -15,7 +15,7 @@ img{max-width:100%}
   color-scheme:dark;
   --bg:#150d1c; --panel:#20142b; --line:#3a2749;
   --fg:#f6eefb; --dim:#a892b8; --unsung:#6f5a80;
-  --p1:#ff4fa3; --p2:#3fd6e0; --gold:#ffc94a;
+  --p1:#ff4fa3; --p2:#3fd6e0; --p3:#a6e85a; --p4:#ff9548; --p5:#b48cff; --gold:#ffc94a;
   --display:"Unbounded","Arial Black",sans-serif;
   --body:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
   --mono:"JetBrains Mono",Consolas,monospace;
@@ -58,7 +58,8 @@ button:hover{border-color:var(--p1)}
 #top h2 small{color:var(--dim);font-weight:400}
 #tracks{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;gap:3vh;padding:0 16px 3vh}
 .track{--c:var(--p1);display:flex;flex-direction:column;gap:1.2vh;align-items:center;text-align:center}
-.track.t2{--c:var(--p2)}
+.track.v2{--c:var(--p2)} .track.v3{--c:var(--p3)} .track.v4{--c:var(--p4)} .track.v5{--c:var(--p5)}
+.who{font-family:var(--mono);font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--c)}
 .lane{position:relative;width:min(100%,1000px);height:clamp(60px,16vh,150px)}
 .duet .lane{height:clamp(40px,9vh,90px)}
 .note{position:absolute;height:12%;min-height:8px;border-radius:99px;background:var(--unsung);overflow:hidden}
@@ -71,6 +72,13 @@ button:hover{border-color:var(--p1)}
 .wait i{display:block;height:100%;background:var(--c);width:var(--w,0%)}
 .cur{font-weight:800;font-size:clamp(1.6rem,5.4vw,4.2rem);line-height:1.15;white-space:pre-wrap;min-height:1.15em;text-wrap:balance;letter-spacing:-.01em}
 .duet .cur{font-size:clamp(1.3rem,3.8vw,3rem)}
+/* 3 voix ou plus : tout se resserre, et la ligne déjà chantée disparaît pour garder la place. */
+#tracks.multi{gap:1.5vh}
+.multi .track{gap:.6vh}
+.multi .lane{height:clamp(24px,5vh,56px)}
+.multi .cur{font-size:clamp(1.05rem,2.6vw,2rem)}
+.multi .nxt{font-size:clamp(.85rem,1.8vw,1.3rem);min-height:1.2em}
+.multi .old{display:none}
 .cur span{background-image:linear-gradient(90deg,var(--c) var(--p,0%),var(--fg) var(--p,0%));-webkit-background-clip:text;background-clip:text;color:transparent}
 .cur span.gold{background-image:linear-gradient(90deg,var(--gold) var(--p,0%),var(--fg) var(--p,0%))}
 .cur span.free{font-style:italic;font-weight:400}
@@ -126,7 +134,7 @@ button:hover{border-color:var(--p1)}
     <span class="mono" id="time">0:00 / 0:00</span>
     <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Position">
     <button id="offm" type="button" title="Paroles plus tôt">−</button>
-    <span class="mono" id="off" title="Décalage des paroles">0 ms</span>
+    <button class="mono" id="off" type="button" title="Décalage des paroles pour cette chanson (clic : remettre à zéro)">0 ms</button>
     <button id="offp" type="button" title="Paroles plus tard">+</button>
     <input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume">
   </div>
@@ -189,14 +197,23 @@ function headers(text){
   }
   return h;
 }
+// #VERSION absent : format non versionn\u00E9. Une version majeure > 1 change la s\u00E9mantique (unit\u00E9s de #START, #VIDEOGAP\u2026) : on refuse plut\u00F4t que de jouer d\u00E9cal\u00E9.
+function version(h){
+  if(!h.VERSION) return null;
+  const m=/^(\d+)\.(\d+)\.(\d+)$/.exec(h.VERSION);
+  return m?{raw:h.VERSION,major:+m[1]}:{raw:h.VERSION,bad:true};
+}
+const voiceName=(h,k)=>h['P'+(k+1)]||h['DUETSINGERP'+(k+1)]||'';
 function parseSong(text){
-  const h=headers(text), bpm=num(h.BPM)||120, gap=num(h.GAP)/1000, rel=/^yes$/i.test(h.RELATIVE||'');
+  const h=headers(text), ver=version(h);
+  if(ver&&ver.major>1) return {h,ver,blocked:true,tracks:[],end:0,start:0,stop:0,vgap:0};
+  const bpm=num(h.BPM)||120, gap=num(h.GAP)/1000, rel=/^yes$/i.test(h.RELATIVE||'');
   const sec=b=>gap+b*15/bpm;
-  const raw=[[],[]]; let tr=0, base=[0,0];
+  const raw=Array.from({length:9},()=>[]), base=Array(9).fill(0); let tr=0;
   for(const l of text.replace(/^\uFEFF/,'').split(/\r?\n/)){
     const c=l[0];
     if(c==='E') break;
-    if(c==='P'){ tr=parseInt(l.slice(1))===2?1:0; continue }
+    if(c==='P'){ const n=parseInt(l.slice(1)); tr=n>=1&&n<=9?n-1:0; continue }
     if(c==='-'){
       const n=l.slice(1).trim().split(/\s+/).map(Number);
       raw[tr].push(null);
@@ -206,17 +223,19 @@ function parseSong(text){
     const m=/^([:*FRG])\s*(-?\d+)\s+(-?\d+)\s+(-?\d+)\s?(.*)$/.exec(l);
     if(!m) continue;
     const b=+m[2]+(rel?base[tr]:0);
-    raw[tr].push({t0:sec(b),t1:sec(b+Math.max(1,+m[3])),pitch:+m[4],text:m[5],
+    // « ~ » marque une syllabe tenue (mélisme) : utile au chant, du bruit à l'écran. La note reste, seul le signe disparaît.
+    raw[tr].push({t0:sec(b),t1:sec(b+Math.max(1,+m[3])),pitch:+m[4],text:m[5].replace(/~/g,''),
       type:(m[1]==='*'||m[1]==='G')?'gold':m[1]==='F'?'free':''});
   }
-  const tracks=raw.map(r=>{
+  const tracks=[];
+  raw.forEach((r,k)=>{
     const lines=[]; let cur=[];
     const flush=()=>{ if(cur.length){ cur[0].text=cur[0].text.replace(/^\s+/,''); lines.push({notes:cur,t0:cur[0].t0,t1:cur[cur.length-1].t1}); cur=[] } };
     for(const n of r){ n?cur.push(n):flush() } flush();
-    return lines;
-  }).filter(t=>t.length);
-  let end=0; tracks.forEach(t=>end=Math.max(end,t[t.length-1].t1));
-  return {h,tracks,end,start:num(h.START),stop:num(h.END)/1000,vgap:num(h.VIDEOGAP)};
+    if(lines.length) tracks.push({voice:k,name:voiceName(h,k),lines});
+  });
+  let end=0; tracks.forEach(t=>end=Math.max(end,t.lines[t.lines.length-1].t1));
+  return {h,ver,tracks,end,start:num(h.START),stop:num(h.END)/1000,vgap:num(h.VIDEOGAP)};
 }
 
 /* ---------- Bibliothèque ---------- */
@@ -293,8 +312,11 @@ function render(){
     const tags=document.createElement('div');
     const tag=(x,w)=>{const e=document.createElement('span');e.className='tag'+(w?' warn':'');e.textContent=x;tags.append(e)};
     if(s.demo) tag('exemple',1);
-    if(s.h.P1||s.h.DUETSINGERP1) tag('duo');
+    const nv=[0,1,2,3,4,5,6,7,8].filter(k=>voiceName(s.h,k)).length;
+    if(nv>2) tag(nv+' voix'); else if(nv) tag('duo');
     if(s.h.VIDEO) tag('vidéo');
+    const ver=version(s.h);
+    if(ver&&ver.major>1) tag('format '+ver.raw,1);
     b.append(im,mid,tags);
     b.onclick=()=>open(i);
     list.append(b);
@@ -305,7 +327,7 @@ function render(){
 
 /* ---------- Lecteur ---------- */
 const aud=$('aud'), vid=$('vid');
-let song=null, idx=-1, useAudio=false, playing=false, vbase=0, vstart=0, offset=store.get('kOffset',0), raf=0, views=[], media=[], seeking=false, hasVid=false;
+let song=null, idx=-1, useAudio=false, playing=false, vbase=0, vstart=0, offset=0, songKey='', raf=0, views=[], media=[], seeking=false, hasVid=false;
 const now=()=>useAudio?aud.currentTime:(playing?vbase+(performance.now()-vstart)/1000:vbase);
 const dur=()=>song.stop||((useAudio&&isFinite(aud.duration))?aud.duration:song.end+3);
 const fmt=t=>{t=Math.max(0,t|0);return (t/60|0)+':'+String(t%60).padStart(2,'0')};
@@ -328,17 +350,22 @@ async function open(i){
   const bg=s.demo?null:(pickFile(s,song.h.BACKGROUND,IMG,'[bg]')||cover(s));
   $('bgimg').hidden=!bg||hasVid; if(bg) $('bgimg').src=url(bg);
   // pistes
-  const box=$('tracks'); box.textContent=''; box.className=song.tracks.length>1?'duet':'';
-  views=song.tracks.map((lines,k)=>{
-    const el=document.createElement('div'); el.className='track'+(k?' t2':'');
-    el.innerHTML='<div class="lane"></div><div class="wait" hidden><i></i></div><div class="old"></div><div class="cur"></div><div class="nxt"></div>';
+  const box=$('tracks'), nv=song.tracks.length; box.textContent=''; box.className=nv>2?'duet multi':nv>1?'duet':'';
+  views=song.tracks.map(({voice,name,lines})=>{
+    const el=document.createElement('div'); el.className='track v'+(voice%5+1);
+    el.innerHTML='<div class="who" hidden></div><div class="lane"></div><div class="wait" hidden><i></i></div><div class="old"></div><div class="cur"></div><div class="nxt"></div>';
+    const q=c=>el.querySelector(c);
+    if(nv>1){ q('.who').hidden=false; q('.who').textContent=name||'Voix '+(voice+1) }
     box.append(el);
-    return {lines,li:-2,lane:el.children[0],wait:el.children[1],old:el.children[2],cur:el.children[3],nxt:el.children[4],spans:[],bars:[],head:null};
+    return {lines,li:-2,lane:q('.lane'),wait:q('.wait'),old:q('.old'),cur:q('.cur'),nxt:q('.nxt'),spans:[],bars:[],head:null};
   });
-  if(!song.tracks.length) $('msg').textContent='Ce fichier ne contient aucune note lisible.';
+  if(song.blocked) $('msg').textContent=`Cette chanson est au format UltraStar ${song.ver.raw}, que ce lecteur ne sait pas encore lire. Elle n'est pas jouée, pour éviter des paroles décalées.`;
+  else if(!nv) $('msg').textContent='Ce fichier ne contient aucune note lisible.';
+  else if(song.ver&&song.ver.bad) $('msg').textContent=[$('msg').textContent,`En-tête #VERSION illisible (« ${song.ver.raw} ») : lecture en mode compatible.`].filter(Boolean).join(' ');
   vbase=song.start; if(useAudio&&song.start) aud.currentTime=song.start;
   $('lib').hidden=true; $('stage').hidden=false;
-  setOffset(0); play();
+  songKey=(s.artist+' - '+s.title).toLowerCase(); offset=offsets[songKey]||0;
+  setOffset(0); if(!song.blocked) play();
 }
 function buildLine(v,li){
   const adv=v.li>=0&&li===v.li+1;
@@ -396,7 +423,14 @@ function pause(){ if(!useAudio) vbase=now(); playing=false; if(useAudio) aud.pau
 function stop(){ if(song){ pause(); vid.pause() } }
 function ui(){ $('play').textContent=playing?'Pause':'Lecture' }
 function seekTo(t){ t=Math.max(0,Math.min(t,dur())); if(useAudio) aud.currentTime=t; else{ vbase=t; vstart=performance.now() } }
-function setOffset(d){ offset=Math.max(-3000,Math.min(3000,offset+d)); store.set('kOffset',offset); $('off').textContent=(offset>0?'+':'')+offset+' ms' }
+// Un décalage par chanson, rangé sous « artiste - titre » : ça survit à un nouveau téléchargement et laisse les .txt intacts.
+const offsets=store.get('kOffsets',{});
+function setOffset(d){
+  offset=Math.max(-3000,Math.min(3000,offset+d));
+  if(offset) offsets[songKey]=offset; else delete offsets[songKey];
+  store.set('kOffsets',offsets);
+  $('off').textContent=(offset>0?'+':'')+offset+' ms';
+}
 function close(){ stop(); song=null; if(document.fullscreenElement) document.exitFullscreen().catch(()=>{}); $('stage').hidden=true; $('lib').hidden=false }
 function step(d){ if(shown.length) open((idx+d+shown.length)%shown.length) }
 function fullscreen(){ const s=$('stage'); if(document.fullscreenElement) document.exitFullscreen().catch(()=>{}); else if(s.requestFullscreen) s.requestFullscreen().catch(()=>{}) }
@@ -406,7 +440,7 @@ aud.addEventListener('error',()=>{ if(useAudio&&song){ $('msg').textContent='Ce 
 $('play').onclick=()=>playing?pause():play();
 $('back').onclick=close; $('fs').onclick=fullscreen;
 $('prev').onclick=()=>step(-1); $('next').onclick=()=>step(1);
-$('offm').onclick=()=>setOffset(-50); $('offp').onclick=()=>setOffset(50);
+$('offm').onclick=()=>setOffset(-50); $('offp').onclick=()=>setOffset(50); $('off').onclick=()=>setOffset(-offset);
 $('seek').oninput=e=>{seeking=true;seekTo(e.target.value/1000*dur())};
 $('seek').onchange=()=>seeking=false;
 $('vol').value=aud.volume=store.get('kVol',1);
