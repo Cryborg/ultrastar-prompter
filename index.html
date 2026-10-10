@@ -50,7 +50,7 @@ button:hover{border-color:var(--p1)}
 
 /* Scène */
 #stage{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
-#bgimg,#vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.35}
+#bgimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.35}
 #stage::after{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(21,13,28,.75),rgba(21,13,28,.2) 35%,rgba(21,13,28,.92) 80%);pointer-events:none}
 #top,#tracks,#bar{position:relative;z-index:1}
 #top{display:flex;gap:12px;align-items:center;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px}
@@ -119,7 +119,6 @@ button:hover{border-color:var(--p1)}
 
 <section id="stage" hidden>
   <img id="bgimg" alt="" hidden>
-  <video id="vid" muted playsinline hidden></video>
   <div id="top">
     <button id="back" type="button" title="Retour (Échap)">← Liste</button>
     <h2 id="now"></h2>
@@ -197,7 +196,7 @@ function headers(text){
   }
   return h;
 }
-// #VERSION absent : format non versionn\u00E9. Une version majeure > 1 change la s\u00E9mantique (unit\u00E9s de #START, #VIDEOGAP\u2026) : on refuse plut\u00F4t que de jouer d\u00E9cal\u00E9.
+// #VERSION absent : format non versionné. Une version majeure > 1 change la sémantique (unités de #START…) : on refuse plutôt que de jouer décalé.
 function version(h){
   if(!h.VERSION) return null;
   const m=/^(\d+)\.(\d+)\.(\d+)$/.exec(h.VERSION);
@@ -206,7 +205,7 @@ function version(h){
 const voiceName=(h,k)=>h['P'+(k+1)]||h['DUETSINGERP'+(k+1)]||'';
 function parseSong(text){
   const h=headers(text), ver=version(h);
-  if(ver&&ver.major>1) return {h,ver,blocked:true,tracks:[],end:0,start:0,stop:0,vgap:0};
+  if(ver&&ver.major>1) return {h,ver,blocked:true,tracks:[],end:0,start:0,stop:0};
   const bpm=num(h.BPM)||120, gap=num(h.GAP)/1000, rel=/^yes$/i.test(h.RELATIVE||'');
   const sec=b=>gap+b*15/bpm;
   const raw=Array.from({length:9},()=>[]), base=Array(9).fill(0); let tr=0;
@@ -235,12 +234,12 @@ function parseSong(text){
     if(lines.length) tracks.push({voice:k,name:voiceName(h,k),lines});
   });
   let end=0; tracks.forEach(t=>end=Math.max(end,t.lines[t.lines.length-1].t1));
-  return {h,ver,tracks,end,start:num(h.START),stop:num(h.END)/1000,vgap:num(h.VIDEOGAP)};
+  return {h,ver,tracks,end,start:num(h.START),stop:num(h.END)/1000};
 }
 
 /* ---------- Bibliothèque ---------- */
 let songs=[{demo:true,artist:'Démo sans son',title:'Tour de chauffe',h:{},dir:null}], shown=[], urls=[];
-const AUDIO=/\.(mp3|ogg|oga|m4a|opus|wav|flac|aac|mp4|webm)$/i, IMG=/\.(jpe?g|png|webp|gif|bmp)$/i, VID=/\.(mp4|webm|m4v|mov)$/i;
+const AUDIO=/\.(mp3|ogg|oga|m4a|opus|wav|flac|aac|mp4|webm)$/i, IMG=/\.(jpe?g|png|webp|gif|bmp)$/i;
 
 async function entriesToFiles(items){
   const out=[];
@@ -314,7 +313,6 @@ function render(){
     if(s.demo) tag('exemple',1);
     const nv=[0,1,2,3,4,5,6,7,8].filter(k=>voiceName(s.h,k)).length;
     if(nv>2) tag(nv+' voix'); else if(nv) tag('duo');
-    if(s.h.VIDEO) tag('vidéo');
     const ver=version(s.h);
     if(ver&&ver.major>1) tag('format '+ver.raw,1);
     b.append(im,mid,tags);
@@ -326,8 +324,8 @@ function render(){
 }
 
 /* ---------- Lecteur ---------- */
-const aud=$('aud'), vid=$('vid');
-let song=null, idx=-1, useAudio=false, playing=false, vbase=0, vstart=0, offset=0, songKey='', raf=0, views=[], media=[], seeking=false, hasVid=false;
+const aud=$('aud');
+let song=null, idx=-1, useAudio=false, playing=false, vbase=0, vstart=0, offset=0, songKey='', raf=0, views=[], media=[], seeking=false;
 const now=()=>useAudio?aud.currentTime:(playing?vbase+(performance.now()-vstart)/1000:vbase);
 const dur=()=>song.stop||((useAudio&&isFinite(aud.duration))?aud.duration:song.end+3);
 const fmt=t=>{t=Math.max(0,t|0);return (t/60|0)+':'+String(t%60).padStart(2,'0')};
@@ -344,11 +342,8 @@ async function open(i){
   useAudio=!!a; $('msg').textContent='';
   if(a){ aud.src=url(a) } else { aud.removeAttribute('src'); aud.load();
     $('msg').textContent=s.demo?'Exemple sans musique : seules les paroles défilent.':'Fichier audio introuvable dans le dossier : les paroles défilent sans musique.' }
-  const v=s.demo?null:(song.h.VIDEO&&s.dir.get(song.h.VIDEO.toLowerCase()));
-  hasVid=!!(v&&VID.test(v.name)); vid.hidden=!hasVid;
-  if(hasVid) vid.src=url(v); else { vid.removeAttribute('src'); vid.load() }
   const bg=s.demo?null:(pickFile(s,song.h.BACKGROUND,IMG,'[bg]')||cover(s));
-  $('bgimg').hidden=!bg||hasVid; if(bg) $('bgimg').src=url(bg);
+  $('bgimg').hidden=!bg; if(bg) $('bgimg').src=url(bg);
   // pistes
   const box=$('tracks'), nv=song.tracks.length; box.textContent=''; box.className=nv>2?'duet multi':nv>1?'duet':'';
   views=song.tracks.map(({voice,name,lines})=>{
@@ -404,11 +399,6 @@ function frame(){
     v.old.classList.toggle('gone',t>=L.t0||(!!P&&t>P.t1+2.5));
     v.wait.hidden=!show; if(show) v.wait.firstChild.style.setProperty('--w',Math.min(w,5)/5*100+'%');
   }
-  if(hasVid&&vid.readyState>0){
-    const want=real+song.vgap;
-    if(want>=0&&want<(vid.duration||1e9)){ if(Math.abs(vid.currentTime-want)>.35) vid.currentTime=want; if(playing&&vid.paused) vid.play().catch(()=>{}); if(!playing&&!vid.paused) vid.pause() }
-    else if(!vid.paused) vid.pause();
-  }
   $('time').textContent=fmt(real)+' / '+fmt(D);
   if(!seeking) $('seek').value=clamp(real/D)*1000;
   if(playing&&real>=D) pause();
@@ -420,7 +410,7 @@ function play(){
   ui();
 }
 function pause(){ if(!useAudio) vbase=now(); playing=false; if(useAudio) aud.pause(); ui() }
-function stop(){ if(song){ pause(); vid.pause() } }
+function stop(){ if(song) pause() }
 function ui(){ $('play').textContent=playing?'Pause':'Lecture' }
 function seekTo(t){ t=Math.max(0,Math.min(t,dur())); if(useAudio) aud.currentTime=t; else{ vbase=t; vstart=performance.now() } }
 // Un décalage par chanson, rangé sous « artiste - titre » : ça survit à un nouveau téléchargement et laisse les .txt intacts.
